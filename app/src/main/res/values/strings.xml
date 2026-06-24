@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">APKHistory</string>
+    <string name="search_hint">搜索安卓应用…</string>
+    <string name="tab_search">搜索</string>
+    <string name="tab_downloads">下载</string>
+    <string name="tab_favorites">收藏</string>
+    <string name="no_results">没有找到结果</string>
+    <string name="no_downloads">暂无下载记录</string>
+    <string name="no_favorites">暂无收藏</string>
+    <string name="error_network">网络错误，请检查连接</string>
+    <string name="error_parse">数据解析失败</string>
+    <string name="version_history">历史版本</string>
+    <string name="download">下载</string>
+    <string name="installing">安装中…</string>
+    <string name="open">打开</string>
+    <string name="retry">重试</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确定</string>
+    <string name="downloading_progress">正在下载: %1$d%%</string>
+    <string name="download_complete">下载完成</string>
+    <string name="download_paused">已暂停</string>
+    <string name="download_failed">下载失败</string>
+    <string name="apk_size">%1$s</string>
+    <string name="version_name">版本 %1$s</string>
+    <string name="update_time">更新于 %1$s</string>
+    <string name="install_count">%1$s 次安装</string>
+    <string name="whats_new">更新内容</string>
+    <string name="permissions">权限</string>
+    <string name="system_requirement">系统要求</string>
+    <string name="developer">开发者</string>
+    <string name="category">分类</string>
+    <string name="loading">加载中…</string>
+    <string name="save_to">保存到</string>
+</resources>

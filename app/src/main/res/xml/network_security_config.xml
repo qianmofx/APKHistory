@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">wandoujia.com</domain>
+        <domain includeSubdomains="true">25pp.com</domain>
+        <domain includeSubdomains="true">ucdl.25pp.com</domain>
+        <domain includeSubdomains="true">android-artworks.25pp.com</domain>
+        <domain includeSubdomains="true">android-screenimgs.25pp.com</domain>
+    </domain-config>
+</network-security-config>
