@@ -29,9 +29,7 @@
 
 ## 截图
 
-| 搜索 | 历史版本 | 下载管理 |
-|------|---------|---------|
-| ![搜索](screenshots/search.png) | ![历史版本](screenshots/versions.png) | ![下载](screenshots/downloads.png) |
+> 📸 截图待补充
 
 ## 构建
 
