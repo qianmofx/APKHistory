@@ -99,12 +99,16 @@ class DownloadsViewModel : ViewModel() {
         context: Context, recordId: Long, url: String,
         appId: String, appName: String, versionName: String
     ) = withContext(Dispatchers.IO) {
+        var outputUri: Uri? = null
         try {
             ensureActive()
             val fileName = "${appName}_${versionName}.apk"
                 .replace(" ", "_").replace("/", "_").replace(":", "_")
 
-            val (outputUri, displayPath) = createOutput(context, fileName)
+            val (uri, displayPath) = createOutput(context, fileName)
+            outputUri = uri
+            // 立即保存路径，确保取消时能根据 filePath 清理
+            repository.completeDownload(recordId, DownloadStatus.DOWNLOADING, displayPath, System.currentTimeMillis())
             ensureActive()
 
             val refererUrl = "https://www.wandoujia.com/apps/$appId"
@@ -121,7 +125,7 @@ class DownloadsViewModel : ViewModel() {
             ensureActive()
 
             body.byteStream().use { input ->
-                context.contentResolver.openOutputStream(outputUri)?.use { output ->
+                context.contentResolver.openOutputStream(uri)?.use { output ->
                     val buffer = ByteArray(Constants.BUFFER_SIZE)
                     var downloaded = 0L
                     var lastProgress = -1
@@ -144,16 +148,22 @@ class DownloadsViewModel : ViewModel() {
 
             // 标记 MediaStore 文件完成（API 29+）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                context.contentResolver.update(outputUri, ContentValues().apply {
+                context.contentResolver.update(uri, ContentValues().apply {
                     put(MediaStore.Downloads.IS_PENDING, 0)
                 }, null, null)
             }
 
             ensureActive()
-            repository.completeDownload(recordId, DownloadStatus.COMPLETED, displayPath, System.currentTimeMillis())
+            repository.completeDownload(recordId, DownloadStatus.COMPLETED, uri.toString(), System.currentTimeMillis())
 
         } catch (e: CancellationException) {
-            try { deleteOutputFile(context, appName, versionName) } catch (_: Exception) {}
+            // 取消时用 outputUri 精确删除 MediaStore 文件
+            if (outputUri != null) {
+                try { context.contentResolver.delete(outputUri!!, null, null) } catch (_: Exception) {}
+            } else {
+                try { deleteOutputFile(context, appName, versionName) } catch (_: Exception) {}
+            }
+            repository.deleteDownloadById(recordId)
             throw e
         } catch (e: Exception) {
             repository.updateDownloadStatus(recordId, DownloadStatus.FAILED)
