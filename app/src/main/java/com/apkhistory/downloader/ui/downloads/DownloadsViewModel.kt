@@ -14,15 +14,13 @@ import com.apkhistory.downloader.App
 import com.apkhistory.downloader.data.model.DownloadRecord
 import com.apkhistory.downloader.data.model.DownloadStatus
 import com.apkhistory.downloader.data.repository.AppRepository
+import com.apkhistory.downloader.util.Constants
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -60,7 +58,8 @@ class DownloadsViewModel : ViewModel() {
         vid: String,
         versionName: String,
         iconUrl: String,
-        apkSize: String = ""
+        apkSize: String = "",
+        downloadUrl: String = ""
     ) {
         val running = _state.value.downloads.any {
             it.appId == appId && it.vid == vid && it.status == DownloadStatus.DOWNLOADING
@@ -76,19 +75,20 @@ class DownloadsViewModel : ViewModel() {
             }
             if (existing?.status == DownloadStatus.DOWNLOADING) return@launch
 
-            val downloadUrl = repository.getDownloadUrl(appId, vid)
+            // 优先使用页面解析的 CDN 直链（历史版本），没有则用拼接 URL（最新版）
+            val finalUrl = downloadUrl.ifEmpty { repository.getDownloadUrl(appId, vid) }
             val recordId = existing?.id ?: repository.insertDownload(
                 DownloadRecord(
                     appId = appId, appName = appName, packageName = packageName,
                     vid = vid, versionName = versionName, iconUrl = iconUrl,
-                    downloadUrl = downloadUrl, apkSize = apkSize
+                    downloadUrl = finalUrl, apkSize = apkSize
                 )
             )
 
             repository.updateDownloadStatus(recordId, DownloadStatus.DOWNLOADING)
 
             val job = viewModelScope.launch {
-                doDownload(context, recordId, downloadUrl, appName, versionName)
+                doDownload(context, recordId, finalUrl, appId, appName, versionName)
             }
             activeDownloads[recordId] = job
             job.invokeOnCompletion { activeDownloads.remove(recordId) }
@@ -97,7 +97,7 @@ class DownloadsViewModel : ViewModel() {
 
     private suspend fun doDownload(
         context: Context, recordId: Long, url: String,
-        appName: String, versionName: String
+        appId: String, appName: String, versionName: String
     ) = withContext(Dispatchers.IO) {
         try {
             ensureActive()
@@ -107,9 +107,12 @@ class DownloadsViewModel : ViewModel() {
             val (outputUri, displayPath) = createOutput(context, fileName)
             ensureActive()
 
+            val refererUrl = "https://www.wandoujia.com/apps/$appId"
             val response = downloadClient.newCall(
                 Request.Builder().url(url)
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                    .header("Referer", refererUrl)
+                    .header("Accept-Language", "zh-CN,zh;q=0.9")
                     .build()
             ).execute()
             val body = response.body ?: throw Exception("Empty response")
@@ -119,7 +122,7 @@ class DownloadsViewModel : ViewModel() {
 
             body.byteStream().use { input ->
                 context.contentResolver.openOutputStream(outputUri)?.use { output ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(Constants.BUFFER_SIZE)
                     var downloaded = 0L
                     var lastProgress = -1
                     while (true) {
@@ -164,12 +167,12 @@ class DownloadsViewModel : ViewModel() {
                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                 put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
                 put(MediaStore.Downloads.IS_PENDING, 1)
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/APKHistory")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/${Constants.DOWNLOAD_DIR}")
             }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)!!
             Pair(uri, uri.toString())
         } else {
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "APKHistory")
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), Constants.DOWNLOAD_DIR)
             dir.mkdirs()
             val file = File(dir, fileName)
             Pair(
@@ -187,7 +190,7 @@ class DownloadsViewModel : ViewModel() {
             context.contentResolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, where, arrayOf(fileName))
         } else {
             File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                "APKHistory/$fileName").delete()
+                "${Constants.DOWNLOAD_DIR}/$fileName").delete()
         }
     }
 
@@ -232,6 +235,6 @@ class DownloadsViewModel : ViewModel() {
 
     fun retryDownload(context: Context, record: DownloadRecord) {
         startDownload(context, record.appId, record.appName, record.packageName,
-            record.vid, record.versionName, record.iconUrl, record.apkSize)
+            record.vid, record.versionName, record.iconUrl, record.apkSize, record.downloadUrl)
     }
 }

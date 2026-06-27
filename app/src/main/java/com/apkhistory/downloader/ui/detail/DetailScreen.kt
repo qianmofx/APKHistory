@@ -16,13 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.apkhistory.downloader.data.model.AppDetail
 import com.apkhistory.downloader.ui.components.ErrorIndicator
 import com.apkhistory.downloader.ui.components.ImagePreviewDialog
+import com.apkhistory.downloader.ui.components.InfoRow
 import com.apkhistory.downloader.ui.components.LoadingIndicator
 import com.apkhistory.downloader.ui.components.ThinTopBar
 import com.apkhistory.downloader.ui.navigation.DownloadParams
@@ -97,7 +97,7 @@ private fun DetailContent(
     onDownload: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var previewIndex = remember { mutableStateOf(-1) }
+    var previewIndex = remember { mutableIntStateOf(-1) }
 
     Column(
         modifier = modifier
@@ -163,11 +163,11 @@ private fun DetailContent(
         Spacer(modifier = Modifier.height(12.dp))
 
         // 信息行
-        InfoRow("大小", detail.size)
-        InfoRow("更新", detail.updateDate)
-        InfoRow("系统要求", detail.systemRequirement)
-        InfoRow("开发者", detail.developer)
-        InfoRow("安装量", detail.installCount)
+        InfoRow("大小", detail.size.ifEmpty { "--" })
+        InfoRow("更新", detail.updateDate.ifEmpty { "--" })
+        InfoRow("系统要求", detail.systemRequirement.ifEmpty { "--" })
+        InfoRow("开发者", detail.developer.ifEmpty { "--" })
+        InfoRow("安装量", detail.installCount.ifEmpty { "--" })
         if (detail.category.isNotEmpty()) InfoRow("分类", detail.category)
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -249,27 +249,5 @@ private fun DetailContent(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = AppColors.TextTertiary,
-            modifier = Modifier.width(72.dp)
-        )
-        Text(
-            text = value.ifEmpty { "--" },
-            style = MaterialTheme.typography.bodySmall,
-            color = AppColors.TextPrimary,
-            modifier = Modifier.weight(1f)
-        )
     }
 }

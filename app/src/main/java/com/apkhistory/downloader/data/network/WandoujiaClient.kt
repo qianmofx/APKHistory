@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
@@ -36,7 +37,7 @@ class WandoujiaClient {
     // =============== 搜索 ===============
 
     suspend fun searchApps(keyword: String, page: Int = 1): List<SearchResult> = withContext(Dispatchers.IO) {
-        val doc = fetch("$BASE_URL/search?key=${java.net.URLEncoder.encode(keyword, "UTF-8")}&page=$page")
+        val doc = fetch("$BASE_URL/search?key=${URLEncoder.encode(keyword, "UTF-8")}&page=$page")
         doc.select("li.search-item").map { item ->
             val link = item.select("a.detail-check-btn").first()
             SearchResult(
@@ -91,15 +92,19 @@ class WandoujiaClient {
             iconUrl = doc.select(".app-icon img").attr("src"),
             // itemprop="fileSize" 是大小字段独有的 meta 标签
             size = doc.select("meta[itemprop=fileSize]").attr("content").ifEmpty {
-                Regex("""itemprop="fileSize"\s+content="([^"]+)"""")
-                    .find(doc.html())?.groupValues?.getOrNull(1) ?: ""
+                // 兜底：部分页面 meta 在 script 模板中，用 Jsoup 重解析
+                Jsoup.parse(doc.html()).select("meta[itemprop=fileSize]").attr("content").ifEmpty {
+                    Regex("""itemprop="fileSize"\s+content="([^"]+)"""")
+                        .find(doc.html())?.groupValues?.getOrNull(1) ?: ""
+                }
             },
             updateDate = infos.select("[datetime]").attr("datetime"),
             systemRequirement = infos.select("dd.perms").text().substringBefore("敏感"),
             category = infos.select(".tag-box a").first()?.text() ?: "",
-            subCategory = if (infos.select(".tag-box a").size > 1) infos.select(".tag-box a")[1].text() else "",
+            subCategory = infos.select(".tag-box a").getOrNull(1)?.text() ?: "",
             developer = infos.select("[itemprop=name]").text().ifEmpty {
-                infos.select("dd").find { it.text().contains("腾讯") }?.text() ?: ""
+                // 兜底：从 infos 列表中找可能的开发者 dd 项
+                infos.select("dd").firstOrNull { it.text().contains("公司") || it.text().contains("工作室") }?.text() ?: ""
             },
             installCount = doc.select("[itemprop=interactionCount]").attr("content")
                 .removePrefix("UserDownloads:")
@@ -121,45 +126,26 @@ class WandoujiaClient {
     suspend fun getVersions(appId: String): List<AppVersion> = withContext(Dispatchers.IO) {
         val doc = fetch("$BASE_URL/apps/$appId/history")
         val items = doc.select("ul.old-version-list > li")
-        val versions = mutableListOf<AppVersion>()
-
-        // 当前版本
-        val detailDoc = if (items.isEmpty()) doc else fetch("$BASE_URL/apps/$appId")
-
-        for (item in items) {
-            val link = item.select("> a[data-app-vname]").first()
-                ?: item.select("a[data-app-vname]").first()
-            if (link == null) {
-                // 如果是通过 <a href> 包裹图片和文本的结构
-                val textLink = item.select("> a").first()
-                val detailBtn = item.select("a.detail-check-btn").first()
-                if (detailBtn != null) {
-                    val nameText = textLink?.select("p")?.text() ?: ""
-                    val cleanName = nameText.replace("微信 ", "").trim()
-                    versions.add(AppVersion(
-                        appId = appId,
-                        vid = detailBtn.attr("data-app-vid"),
-                        versionName = detailBtn.attr("data-app-vname").ifEmpty { cleanName },
-                        versionCode = detailBtn.attr("data-app-vcode"),
-                        iconUrl = detailBtn.attr("data-app-icon").ifEmpty {
-                            textLink?.select("img")?.attr("src") ?: ""
-                        },
-                        apkSize = textLink?.select("span")?.text() ?: ""
-                    ))
-                }
-            } else {
-                val pText = item.select("> a p").text()
-                versions.add(AppVersion(
-                    appId = appId,
-                    vid = link.attr("data-app-vid"),
-                    versionName = link.attr("data-app-vname"),
-                    versionCode = link.attr("data-app-vcode"),
-                    iconUrl = link.attr("data-app-icon"),
-                    apkSize = item.select("> a span").text()
-                ))
+        items.mapNotNull { item ->
+            // 优先从 <li> 的 data-* 属性取，没有则从子元素 <a> 取
+            val vid = item.attr("data-app-vid").ifEmpty {
+                item.select("a[data-app-vid]").first()?.attr("data-app-vid") ?: return@mapNotNull null
             }
+            val versionCode = item.attr("data-app-vcode").ifEmpty {
+                item.select("a[data-app-vcode]").first()?.attr("data-app-vcode") ?: ""
+            }
+            val versionName = item.attr("data-app-vname").ifEmpty {
+                item.select("a[data-app-vname]").first()?.attr("data-app-vname") ?: ""
+            }
+            val iconUrl = item.attr("data-app-icon").ifEmpty {
+                item.select("a[data-app-icon]").first()?.attr("data-app-icon") ?: ""
+            }
+            val detailLink = item.select("> a").first()
+            val apkSize = detailLink?.select("span")?.text() ?: ""
+
+            AppVersion(appId = appId, vid = vid, versionName = versionName,
+                versionCode = versionCode, iconUrl = iconUrl, apkSize = apkSize)
         }
-        versions
     }
 
     // =============== 版本详情（含 changelog + 发布日期） ===============
@@ -176,76 +162,82 @@ class WandoujiaClient {
             .eachText()
             .filter { it.length < 50 }
 
+        // 从版本详情页提取 APK 直链（核心！不走 /download?vid= 拼接）
+        val pageDownloadUrl = parseDownloadUrl(doc)
+        // 解析应用图标
+        val pageIconUrl = doc.select(".icon-wrap img").attr("src").let { src ->
+            if (src.startsWith("//")) "https:$src" else src
+        }
+
         VersionDetail(
             vid = doc.body().attr("data-app-vid"),
             vcode = vcode,
-            versionName = doc.body().attr("data-app-vname").ifEmpty {
-                // 版本详情页 body 没有 data-app-vname，从标题提取
-                // 标题格式: "2026微信v8.0.72老旧历史版本..."
-                Regex("""v(\d+\.\d+\.\d+(?:\.\d+)?)""").find(doc.title())?.groupValues?.getOrNull(1)
-                    ?: "未知"
+            versionName = doc.select(".version-name").text()
+                .replaceFirst("^版本(号)?[：:]?\\s*".toRegex(), "")
+                .trim()
+                .ifEmpty {
+                doc.body().attr("data-app-vname").ifEmpty {
+                    Regex("""v(\d+\.\d+\.\d+(?:\.\d+)?)""").find(doc.title())?.groupValues?.getOrNull(1)
+                        ?: "未知"
+                }
             },
             appName = doc.body().attr("data-title").ifEmpty {
-                // 从标题提取: "2026微信v8.0.72..." → "微信"
                 val title = doc.title()
                 Regex("""(\d+)(.+?)v\d""").find(title)?.groupValues?.getOrNull(2)
                     ?: title.substringBefore("_")
             },
             apkSize = doc.select("meta[itemprop=fileSize]").attr("content").ifEmpty {
-                Regex("""itemprop="fileSize"\s+content="([^"]+)"""")
-                    .find(doc.html())?.groupValues?.getOrNull(1) ?: ""
+                Jsoup.parse(doc.html()).select("meta[itemprop=fileSize]").attr("content")
             },
             updateDate = doc.select(".update-time").text().replace("更新时间：", ""),
             systemRequirement = infos.select("dd.perms").text().substringBefore("敏感"),
             permissions = permissions,
             changelog = changelog.ifEmpty { "本次更新:\n优化了一些已知的问题。" },
             developer = infos.select("[itemprop=name]").text(),
-            category = infos.select(".tag-box a").first()?.text() ?: ""
+            category = infos.select(".tag-box a").first()?.text() ?: "",
+            downloadUrl = pageDownloadUrl,
+            iconUrl = pageIconUrl
         )
     }
 
-    // =============== 类别浏览 ===============
+    /**
+     * 从版本详情页提取 APK 直链下载地址。
+     *
+     * 豌豆荚的下载机制：
+     * - 下载按钮有 class "normal-dl-btn"，其 data-href 属性就是 CDN 直链
+     * - 备选：a[data-type='history'] 的 href 是绑定跳转链接
+     *
+     * 按文档推荐优先级：
+     * 1. .normal-dl-btn → data-href（CDN 直链）
+     * 2. a[data-type='history'] → href（绑定跳转）
+     * 3. 正则 data-href 兜底
+     */
+    private fun parseDownloadUrl(doc: Document): String {
+        // 1. 直链方式（推荐）：.normal-dl-btn → data-href
+        val directUrl = doc.select(".normal-dl-btn").attr("data-href")
+        if (directUrl.isNotEmpty()) return directUrl
 
-    suspend fun getCategoryApps(categoryId: String, page: Int = 1): List<SearchResult> = withContext(Dispatchers.IO) {
-        val doc = fetch("$BASE_URL/category/$categoryId?page=$page")
-        doc.select("a.detail-check-btn").mapNotNull { link ->
-            val appId = link.attr("data-app-id")
-            if (appId.isEmpty()) null else SearchResult(
-                appId = appId,
-                name = link.attr("data-app-name"),
-                packageName = link.attr("data-app-pname"),
-                vid = link.attr("data-app-vid"),
-                versionName = link.attr("data-app-vname"),
-                versionCode = link.attr("data-app-vcode"),
-                iconUrl = link.attr("data-app-icon"),
-                installCount = "",
-                description = "",
-                detailUrl = link.attr("href")
-            )
+        // 2. 绑定跳转方式：a[data-type='history'] → href
+        val bindingUrl = doc.select("a[data-type='history']").attr("href")
+        if (bindingUrl.isNotEmpty()) {
+            return if (bindingUrl.startsWith("//")) "https:$bindingUrl"
+            else if (bindingUrl.startsWith("/")) "$BASE_URL$bindingUrl"
+            else bindingUrl
         }
+
+        // 3. 正则兜底：搜索整个 HTML 中的 data-href
+        val html = doc.html()
+        val regex = Regex("""data-href="(https?://[^"]+)"""")
+        val match = regex.find(html)
+        if (match != null) return match.groupValues[1]
+
+        return ""
     }
 
-    // =============== 排行榜 ===============
-
-    suspend fun getTopApps(type: String = "app"): List<SearchResult> = withContext(Dispatchers.IO) {
-        val doc = fetch("$BASE_URL/top/$type")
-        doc.select("a.detail-check-btn").mapNotNull { link ->
-            val appId = link.attr("data-app-id")
-            if (appId.isEmpty()) null else SearchResult(
-                appId = appId,
-                name = link.attr("data-app-name"),
-                packageName = link.attr("data-app-pname"),
-                vid = link.attr("data-app-vid"),
-                versionName = link.attr("data-app-vname"),
-                versionCode = link.attr("data-app-vcode"),
-                iconUrl = link.attr("data-app-icon"),
-                installCount = "",
-                description = "",
-                detailUrl = link.attr("href")
-            )
-        }
-    }
-
+    /**
+     * 构造最新版下载 URL（仅用于最新版下载）。
+     * 历史版本不走此方法，从版本详情页的 data-href 提取直链。
+     */
     fun getDownloadUrl(appId: String, vid: String): String {
         return "$BASE_URL/apps/$appId/download?vid=$vid"
     }
@@ -254,8 +246,9 @@ class WandoujiaClient {
         val request = Request.Builder().url(url)
             .header("User-Agent", UA)
             .build()
-        val response = client.newCall(request).execute()
-        val html = response.body?.string() ?: throw Exception("Empty response")
-        return Jsoup.parse(html)
+        return client.newCall(request).execute().use { response ->
+            val html = response.body?.string() ?: throw Exception("Empty response")
+            Jsoup.parse(html)
+        }
     }
 }

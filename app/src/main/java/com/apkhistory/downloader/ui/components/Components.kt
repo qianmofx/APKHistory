@@ -1,6 +1,5 @@
 package com.apkhistory.downloader.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,7 +15,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.apkhistory.downloader.data.model.AppVersion
 import com.apkhistory.downloader.data.model.SearchResult
 import com.apkhistory.downloader.ui.theme.AppColors
 
@@ -82,49 +80,6 @@ fun AppCard(
     }
 }
 
-/** 版本列表中的卡片 */
-@Composable
-fun VersionCard(
-    version: AppVersion,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = AppColors.CardBackground),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "版本 ${version.versionName}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = AppColors.TextPrimary
-                )
-                if (version.apkSize.isNotEmpty()) {
-                    Text(
-                        text = version.apkSize,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppColors.TextSecondary
-                    )
-                }
-            }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = AppColors.TextTertiary
-            )
-        }
-    }
-}
-
 /** 加载/错误指示器 */
 @Composable
 fun LoadingIndicator(modifier: Modifier = Modifier) {
@@ -164,32 +119,6 @@ fun ErrorIndicator(
     }
 }
 
-/** 下载进度条 */
-@Composable
-fun DownloadProgressBar(
-    progress: Int,
-    statusText: String,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        LinearProgressIndicator(
-            progress = { progress / 100f },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp)),
-            color = AppColors.Primary,
-            trackColor = AppColors.Divider
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = statusText,
-            style = MaterialTheme.typography.labelSmall,
-            color = AppColors.TextSecondary
-        )
-    }
-}
-
 /** 占位视图 */
 @Composable
 fun EmptyView(
@@ -207,6 +136,33 @@ fun EmptyView(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = AppColors.TextSecondary
+        )
+    }
+}
+
+/** 信息行：用于详情页/版本详情页的字段展示 */
+@Composable
+fun InfoRow(
+    label: String,
+    value: String,
+    isBold: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = AppColors.TextTertiary,
+            modifier = Modifier.width(72.dp)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = AppColors.TextPrimary,
+            fontWeight = if (isBold) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.weight(1f)
         )
     }
 }

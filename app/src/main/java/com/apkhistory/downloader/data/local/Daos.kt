@@ -10,9 +10,6 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads ORDER BY addedTime DESC")
     fun getAllDownloads(): Flow<List<DownloadRecord>>
 
-    @Query("SELECT * FROM downloads WHERE status = :status ORDER BY addedTime DESC")
-    fun getDownloadsByStatus(status: Int): Flow<List<DownloadRecord>>
-
     @Query("SELECT * FROM downloads WHERE appId = :appId AND vid = :vid LIMIT 1")
     suspend fun getDownload(appId: String, vid: String): DownloadRecord?
 
@@ -51,9 +48,6 @@ interface FavoriteDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFavorite(favorite: FavoriteApp)
-
-    @Delete
-    suspend fun deleteFavorite(favorite: FavoriteApp)
 
     @Query("DELETE FROM favorites WHERE appId = :appId")
     suspend fun deleteFavoriteByAppId(appId: String)

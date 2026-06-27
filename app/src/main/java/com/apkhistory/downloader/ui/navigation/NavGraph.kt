@@ -40,7 +40,8 @@ data class DownloadParams(
     val vid: String,
     val versionName: String,
     val iconUrl: String,
-    val apkSize: String = ""
+    val apkSize: String = "",
+    val downloadUrl: String = ""
 )
 
 private val bottomNavItems = listOf(
@@ -68,7 +69,8 @@ fun NavGraph() {
             vid = params.vid,
             versionName = params.versionName,
             iconUrl = params.iconUrl,
-            apkSize = params.apkSize
+            apkSize = params.apkSize,
+            downloadUrl = params.downloadUrl
         )
         // 跳转到下载 tab
         navController.navigate(Screen.Downloads.route) {
@@ -155,12 +157,11 @@ fun NavGraph() {
                 val appId = backStackEntry.arguments?.getString("appId") ?: return@composable
                 VersionsScreen(
                     appId = appId,
-                    appName = "",
                     onBackClick = {
                         navController.popBackStack()
                     },
-                    onVersionClick = { id, vcode ->
-                        navController.navigate(Screen.VersionDetail.createRoute(id, vcode))
+                    onVersionClick = { id, vcode, vid ->
+                        navController.navigate(Screen.VersionDetail.createRoute(id, vcode, vid))
                     }
                 )
             }
@@ -169,14 +170,17 @@ fun NavGraph() {
                 route = Screen.VersionDetail.route,
                 arguments = listOf(
                     navArgument("appId") { type = NavType.StringType },
-                    navArgument("vcode") { type = NavType.StringType }
+                    navArgument("vcode") { type = NavType.StringType },
+                    navArgument("vid") { type = NavType.StringType }
                 )
             ) { backStackEntry ->
                 val appId = backStackEntry.arguments?.getString("appId") ?: return@composable
                 val vcode = backStackEntry.arguments?.getString("vcode") ?: return@composable
+                val vid = backStackEntry.arguments?.getString("vid") ?: return@composable
                 VersionDetailScreen(
                     appId = appId,
                     vcode = vcode,
+                    vid = vid,
                     onBackClick = {
                         navController.popBackStack()
                     },

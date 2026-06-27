@@ -66,7 +66,9 @@ data class VersionDetail(
     val permissions: List<String> = emptyList(),
     val changelog: String,
     val developer: String,
-    val category: String
+    val category: String,
+    val downloadUrl: String = "",
+    val iconUrl: String = ""
 )
 
 /** 下载记录 */

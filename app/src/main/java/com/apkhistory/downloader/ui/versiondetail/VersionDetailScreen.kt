@@ -5,7 +5,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.apkhistory.downloader.ui.components.ErrorIndicator
+import com.apkhistory.downloader.ui.components.InfoRow
 import com.apkhistory.downloader.ui.components.LoadingIndicator
 import com.apkhistory.downloader.ui.components.ThinTopBar
 import com.apkhistory.downloader.ui.navigation.DownloadParams
@@ -24,6 +24,7 @@ import com.apkhistory.downloader.ui.theme.AppColors
 fun VersionDetailScreen(
     appId: String,
     vcode: String,
+    vid: String = "",
     appName: String = "",
     onBackClick: () -> Unit,
     onDownload: (DownloadParams) -> Unit,
@@ -65,10 +66,11 @@ fun VersionDetailScreen(
                                     appId = appId,
                                     appName = detail.appName.ifEmpty { appName },
                                     packageName = "",
-                                    vid = detail.vid,
+                                    vid = if (vid.isNotEmpty()) vid else detail.vid,
                                     versionName = detail.versionName,
-                                    iconUrl = "",
-                                    apkSize = detail.apkSize
+                                    iconUrl = detail.iconUrl,
+                                    apkSize = detail.apkSize,
+                                    downloadUrl = detail.downloadUrl
                                 )
                             )
                         },
@@ -164,28 +166,5 @@ fun VersionDetailScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String, isBold: Boolean = false) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = AppColors.TextTertiary,
-            modifier = Modifier.width(72.dp)
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = AppColors.TextPrimary,
-            fontWeight = if (isBold) FontWeight.SemiBold else FontWeight.Normal,
-            modifier = Modifier.weight(1f)
-        )
     }
 }

@@ -6,14 +6,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.apkhistory.downloader.data.model.AppVersion
@@ -25,9 +23,8 @@ import com.apkhistory.downloader.ui.theme.AppColors
 @Composable
 fun VersionsScreen(
     appId: String,
-    appName: String,
     onBackClick: () -> Unit,
-    onVersionClick: (String, String) -> Unit,
+    onVersionClick: (String, String, String) -> Unit,
     viewModel: VersionsViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -38,7 +35,7 @@ fun VersionsScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         ThinTopBar(
-            title = if (appName.isNotEmpty()) "$appName - 历史版本" else "历史版本",
+            title = "历史版本",
             onBackClick = onBackClick
         )
 
@@ -65,7 +62,7 @@ fun VersionsScreen(
                         VersionItem(
                             index = index + 1,
                             version = version,
-                            onClick = { onVersionClick(appId, version.versionCode) }
+                            onClick = { onVersionClick(appId, version.versionCode, version.vid) }
                         )
                     }
                     item { Spacer(modifier = Modifier.height(16.dp)) }

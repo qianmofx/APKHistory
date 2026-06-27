@@ -16,8 +16,8 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     data object Versions : Screen("versions/{appId}", "历史版本") {
         fun createRoute(appId: String) = "versions/$appId"
     }
-    data object VersionDetail : Screen("version_detail/{appId}/{vcode}", "版本详情") {
-        fun createRoute(appId: String, vcode: String) = "version_detail/$appId/$vcode"
+    data object VersionDetail : Screen("version_detail/{appId}/{vcode}/{vid}", "版本详情") {
+        fun createRoute(appId: String, vcode: String, vid: String) = "version_detail/$appId/$vcode/$vid"
     }
 
     companion object {
