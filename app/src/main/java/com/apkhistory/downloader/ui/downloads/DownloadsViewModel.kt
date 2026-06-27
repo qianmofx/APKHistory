@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -99,23 +100,15 @@ class DownloadsViewModel : ViewModel() {
         context: Context, recordId: Long, url: String,
         appId: String, appName: String, versionName: String
     ) = withContext(Dispatchers.IO) {
-        var outputUri: Uri? = null
         try {
             ensureActive()
             val fileName = "${appName}_${versionName}.apk"
                 .replace(" ", "_").replace("/", "_").replace(":", "_")
 
-            val (uri, displayPath) = createOutput(context, fileName)
-            outputUri = uri
-            // 立即保存路径，确保取消时能根据 filePath 清理
-            repository.completeDownload(recordId, DownloadStatus.DOWNLOADING, displayPath, System.currentTimeMillis())
-            ensureActive()
-
-            val refererUrl = "https://www.wandoujia.com/apps/$appId"
             val response = downloadClient.newCall(
                 Request.Builder().url(url)
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
-                    .header("Referer", refererUrl)
+                    .header("Referer", "https://www.wandoujia.com/apps/$appId")
                     .header("Accept-Language", "zh-CN,zh;q=0.9")
                     .build()
             ).execute()
@@ -124,11 +117,13 @@ class DownloadsViewModel : ViewModel() {
 
             ensureActive()
 
+            // 写入缓存临时文件（下载完成后再移到公共目录）
+            val tempFile = File(context.cacheDir, fileName)
+            var downloaded = 0L
+            var lastProgress = -1
             body.byteStream().use { input ->
-                context.contentResolver.openOutputStream(uri)?.use { output ->
+                FileOutputStream(tempFile).use { output ->
                     val buffer = ByteArray(Constants.BUFFER_SIZE)
-                    var downloaded = 0L
-                    var lastProgress = -1
                     while (true) {
                         ensureActive()
                         val n = input.read(buffer)
@@ -143,26 +138,21 @@ class DownloadsViewModel : ViewModel() {
                             }
                         }
                     }
-                } ?: throw Exception("Can't open output stream")
-            }
-
-            // 标记 MediaStore 文件完成（API 29+）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                context.contentResolver.update(uri, ContentValues().apply {
-                    put(MediaStore.Downloads.IS_PENDING, 0)
-                }, null, null)
+                }
             }
 
             ensureActive()
-            repository.completeDownload(recordId, DownloadStatus.COMPLETED, uri.toString(), System.currentTimeMillis())
+
+            // 下载完成：移到公共目录
+            val finalPath = moveToPublicStorage(context, fileName, tempFile)
+            ensureActive()
+            repository.completeDownload(recordId, DownloadStatus.COMPLETED, finalPath, System.currentTimeMillis())
 
         } catch (e: CancellationException) {
-            // 取消时用 outputUri 精确删除 MediaStore 文件
-            if (outputUri != null) {
-                try { context.contentResolver.delete(outputUri!!, null, null) } catch (_: Exception) {}
-            } else {
-                try { deleteOutputFile(context, appName, versionName) } catch (_: Exception) {}
-            }
+            // 取消时删除缓存临时文件
+            val temp = File(context.cacheDir, "${appName}_${versionName}.apk"
+                .replace(" ", "_").replace("/", "_").replace(":", "_"))
+            try { temp.delete() } catch (_: Exception) {}
             repository.deleteDownloadById(recordId)
             throw e
         } catch (e: Exception) {
@@ -170,25 +160,31 @@ class DownloadsViewModel : ViewModel() {
         }
     }
 
-    /** 创建输出目标：API 29+ 用 MediaStore，否则用公共 Downloads */
-    private fun createOutput(context: Context, fileName: String): Pair<Uri, String> {
+    /** 将缓存文件移动到公共 Downloads 目录 */
+    private fun moveToPublicStorage(context: Context, fileName: String, tempFile: File): String {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                 put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
-                put(MediaStore.Downloads.IS_PENDING, 1)
                 put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/${Constants.DOWNLOAD_DIR}")
             }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)!!
-            Pair(uri, uri.toString())
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                tempFile.inputStream().use { input -> input.copyTo(output) }
+            }
+            // 写完后清除 pending 标记
+            context.contentResolver.update(uri, ContentValues().apply {
+                put(MediaStore.Downloads.IS_PENDING, 0)
+            }, null, null)
+            tempFile.delete()
+            uri.toString()
         } else {
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), Constants.DOWNLOAD_DIR)
             dir.mkdirs()
-            val file = File(dir, fileName)
-            Pair(
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file),
-                file.absolutePath
-            )
+            val dest = File(dir, fileName)
+            tempFile.copyTo(dest, overwrite = true)
+            tempFile.delete()
+            dest.absolutePath
         }
     }
 
